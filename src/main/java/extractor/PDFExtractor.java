@@ -1,55 +1,113 @@
 package extractor;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
-
-import repository.DocumentRecord;
-import repository.DocumentRepository;
 import org.apache.tika.exception.TikaException;
+import org.apache.tika.exception.WriteLimitReachedException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.pdf.PDFParser;
 import org.apache.tika.sax.BodyContentHandler;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
+import repository.DocumentRecord;
+import repository.DocumentRepository;
 
-public class PDFExtractor {
-    BodyContentHandler handler = new BodyContentHandler(-1);
-    Metadata metadata = new Metadata();
-    ParseContext parseContext = new ParseContext();
-    PDFParser pdfParser = new PDFParser();
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 
-    public DocumentRecord getDocumentRecordFromImportedPDF(String filePath) {
-        DocumentRecord documentRecord = null;
-        try {
-            pdfParser.parse(Files.newInputStream(Paths.get(filePath)), handler, metadata, parseContext);
-            documentRecord = new DocumentRecord(getMetadata(), getDocumentText());
-        } catch (TikaException | SAXException | IOException e) {
-            e.printStackTrace();
+public final class PDFExtractor {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PDFExtractor.class);
+    private static final int TEXT_PREVIEW_LIMIT = 2_000_000;
+
+    public DocumentRecord extract(Path file) throws PdfExtractionException {
+        Path source = validate(file);
+        Metadata tikaMetadata = new Metadata();
+        BodyContentHandler contentHandler = new BodyContentHandler(TEXT_PREVIEW_LIMIT);
+        boolean contentTruncated = false;
+
+        try (InputStream input = Files.newInputStream(source)) {
+            new PDFParser().parse(input, contentHandler, tikaMetadata, new ParseContext());
+        } catch (SAXException exception) {
+            if (WriteLimitReachedException.isWriteLimitReached(exception)) {
+                contentTruncated = true;
+                LOGGER.info("Text preview for {} was limited to {} characters", source, TEXT_PREVIEW_LIMIT);
+            } else {
+                throw new PdfExtractionException("The PDF structure could not be read.", exception);
+            }
+        } catch (TikaException exception) {
+            throw new PdfExtractionException("The file is encrypted, damaged, or not a supported PDF.", exception);
+        } catch (IOException exception) {
+            throw new PdfExtractionException("The PDF could not be opened. Check its permissions and try again.", exception);
+        } catch (RuntimeException exception) {
+            throw new PdfExtractionException("The PDF could not be analyzed.", exception);
         }
-        return documentRecord;
+
+        return new DocumentRecord(
+                source,
+                fileSize(source),
+                toMap(tikaMetadata),
+                contentHandler.toString(),
+                contentTruncated
+        );
     }
 
-    public void storeDocumentRecordAs(DocumentRecord documentRecord, boolean isContentIncluded) {
-        DocumentRepository.storeMetadataRecord(documentRecord, isContentIncluded);
+    /**
+     * Compatibility entry point for the original public API.
+     */
+    public DocumentRecord getDocumentRecordFromImportedPDF(String filePath) {
+        try {
+            return extract(Paths.get(filePath));
+        } catch (PdfExtractionException exception) {
+            throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
     }
 
     public void storeDocumentRecordAs(DocumentRecord documentRecord, String filePath, boolean isContentIncluded) {
-        DocumentRepository.storeMetadataRecord(documentRecord, filePath, isContentIncluded);
-    }
-
-    private String getDocumentText() {
-        return handler.toString();
-    }
-
-    private Map<String, String> getMetadata() {
-        Map<String, String> metaMap = new HashMap<>();
-        for (String name : metadata.names()) {
-            metaMap.put(name, metadata.get(name));
+        try {
+            DocumentRepository.storeMetadataRecord(documentRecord, filePath, isContentIncluded);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not export metadata", exception);
         }
-        return metaMap;
+    }
+
+    private Path validate(Path file) throws PdfExtractionException {
+        if (file == null) {
+            throw new PdfExtractionException("Choose a PDF file to continue.");
+        }
+
+        Path source = file.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(source)) {
+            throw new PdfExtractionException("The selected file no longer exists.");
+        }
+        if (!Files.isReadable(source)) {
+            throw new PdfExtractionException("The selected PDF is not readable.");
+        }
+        if (!source.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new PdfExtractionException("Only PDF files can be analyzed.");
+        }
+        return source;
+    }
+
+    private long fileSize(Path source) throws PdfExtractionException {
+        try {
+            return Files.size(source);
+        } catch (IOException exception) {
+            throw new PdfExtractionException("The PDF size could not be determined.", exception);
+        }
+    }
+
+    private Map<String, String> toMap(Metadata metadata) {
+        Map<String, String> values = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (String name : metadata.names()) {
+            String[] entries = metadata.getValues(name);
+            values.put(name, entries.length == 1 ? entries[0] : String.join(", ", entries));
+        }
+        return values;
     }
 }

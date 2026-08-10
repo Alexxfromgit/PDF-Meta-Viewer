@@ -1,93 +1,102 @@
 # PDF Meta Viewer
 
-A Swing desktop application that extracts and displays PDF metadata using Apache Tika, with JSON export capability.
+A focused, cross-platform desktop utility for inspecting PDF metadata and exporting it as clean JSON.
 
-## Features
+PDF Meta Viewer keeps document processing local. Open or drop a PDF, search its metadata, preview extracted text, and export a structured metadata file without uploading the document anywhere.
 
-- Browse and select any PDF file via a file chooser dialog
-- Extract and display all PDF metadata fields (author, title, creation date, page count, etc.)
-- View full extracted text content
-- Export metadata to a JSON file at a user-chosen location
+## Highlights
 
-## Architecture
-
-```
-MetaViewerForm (GUI)
-    └─> PDFExtractor          — parses PDF via Apache Tika; returns DocumentRecord
-            └─> DocumentRecord    — immutable value object (UUID, metadata map, text content)
-            └─> DocumentRepository — writes DocumentRecord to a .json file
-    └─> ConvertJavaMapToJson  — converts metadata Map to a JSON string (Jackson)
-```
-
-**Key packages:**
-
-| Package | Description |
-| --- | --- |
-| `gui` | Swing UI (`MetaViewerForm`) |
-| `extractor` | Tika-based PDF parsing (`PDFExtractor`) |
-| `repository` | Data model (`DocumentRecord`) and file persistence (`DocumentRepository`) |
-| `converters` | Map-to-JSON conversion (`ConvertJavaMapToJson`) |
-| `utilities` | Constants for paths, UI dimensions, and Swing look-and-feel options |
-| `program` | CLI entry point (`Main`) — processes the bundled example PDF without the GUI |
+- Automatic background analysis — the interface stays responsive while a PDF is parsed
+- Searchable, sortable metadata table with multi-row copy
+- Extracted text preview with a safe two-million-character display limit
+- Drag and drop, native file pickers, overwrite protection, and sensible export names
+- Light and dark appearance with the preference remembered between launches
+- Keyboard shortcuts and accessible component descriptions
+- Friendly validation and error messages with structured diagnostic logging
+- Atomic, pretty-printed JSON exports
 
 ## Requirements
 
-- Java 8
-- Maven 3.x
+- Java 17 or newer
+- Maven 3.9 or newer (for building from source)
 
-## Build & Run
+## Run from source
 
 ```bash
-# Compile
-mvn compile
-
-# Run all tests
-mvn test
-
-# Package as an executable uber-JAR
 mvn clean package
+java -jar target/pdf-meta-viewer.jar
 ```
 
-The packaged JAR (`target/PdfMetaViewer-1.0-SNAPSHOT-shaded.jar`) has `gui.MetaViewerForm` as its main class and can be launched directly:
+The first command runs the full test suite and creates a self-contained executable JAR.
+Pass a PDF path after the JAR name to open it immediately.
+
+## Native packages
+
+The release scripts build self-contained applications with a bundled Java runtime:
 
 ```bash
-java -jar target/PdfMetaViewer-1.0-SNAPSHOT-shaded.jar
+# Run on macOS
+./scripts/build-macos.sh app
 ```
 
-## Running Tests
+```powershell
+# Run on Windows; requires WiX Toolset 3.x
+.\scripts\build-windows.ps1 -Target exe
+```
+
+Mac App Store `.pkg` and Microsoft Store `.msix`/`.msixupload` modes are also included. Native packages must be built on their target operating system. See [RELEASING.md](RELEASING.md) for signing assets, Partner Center/App Store Connect identity values, exact commands, validation, and submission steps.
+
+## Use the app
+
+1. Select **Open PDF**, press `Ctrl/Command + O`, or drop one PDF onto the window.
+2. Search and sort the metadata, or switch to **Text preview**.
+3. Select one or more rows and choose **Copy selected** when you need values on the clipboard.
+4. Choose **Export JSON** or press `Ctrl/Command + E` to save the current metadata.
+
+`Ctrl/Command + F` focuses metadata search. `Escape` clears the current search.
+
+An export has a stable, explicit shape:
+
+```json
+{
+  "source": "example.pdf",
+  "metadata": {
+    "Content-Type": "application/pdf",
+    "dc:title": "Example"
+  }
+}
+```
+
+## Command-line use
+
+The packaged app opens the graphical interface. For scripting, run the CLI entry point through Maven or an explicit classpath:
+
+```text
+program.Main <input.pdf> [output.json]
+```
+
+With no output path it prints tab-separated metadata. With an output path it writes the same structured JSON produced by the app.
+
+## Development
 
 ```bash
-# All tests
 mvn test
-
-# Specific test class
-mvn test -Dtest=GeneralConfigurationTests
-
-# Specific test method
-mvn test -Dtest=PdfConvertLogicTests#testPdfExtractor
-
-# By group (smoke | ConvertLogic)
 mvn test -Dgroups=smoke
+mvn clean verify
 ```
 
-Tests are configured via `src/test/resources/testng.xml` with two groups:
-- `smoke` — fast configuration and extraction sanity checks
-- `ConvertLogic` — PDF extraction logic tests
+### Architecture
 
-A sample PDF (`Amazon-S3-Tutorial.pdf`) is bundled under both `src/main/resources/` and `src/test/resources/`.
+```text
+MetaViewerForm
+  ├─ PDFExtractor          validates and parses a PDF with Apache Tika
+  ├─ DocumentRecord        immutable extraction result
+  ├─ MetadataTableModel    searchable table presentation
+  └─ DocumentRepository   atomically writes structured JSON
+```
 
-## Dependencies
+The UI is built with standard Swing and FlatLaf. PDF parsing uses Apache Tika's dedicated PDF module; JSON serialization uses Jackson.
 
-| Library | Version | Purpose |
-| --- | --- | --- |
-| Apache Tika | 2.9.2 | PDF parsing and metadata extraction |
-| Jackson | 2.14.2 | JSON serialization |
-| SLF4J | 2.0.6 | Logging facade |
-| TestNG | 7.10.2 | Test framework |
-| AssertJ | 3.26.3 | Fluent test assertions |
-| Mockito | 5.12.0 | Mocking in tests |
+## Release
 
-## Notes
-
-- The `maven-jarsigner-plugin` in `pom.xml` references a placeholder keystore path — JAR signing will fail unless a real keystore is provided.
-- Error handling currently uses `e.printStackTrace()` throughout; SLF4J is on the classpath but not yet wired up for structured logging.
+See [RELEASING.md](RELEASING.md) for owner, packaging, signing, validation, and Store submission steps.
