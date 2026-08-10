@@ -21,7 +21,7 @@
         <flatlaf.version>3.7.1</flatlaf.version>
         <slf4j.version>2.0.18</slf4j.version>
         <testng.version>7.11.0</testng.version>
-        <assertj.version>3.27.3</assertj.version>
+        <assertj.version>3.27.7</assertj.version>
     </properties>
 
     <dependencies>
