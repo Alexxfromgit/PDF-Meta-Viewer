@@ -72,7 +72,7 @@ The script validates the profile against the bundle ID, derives the application/
 dist/macos/PDF-Meta-Viewer-1.0.0-mac-app-store.pkg
 ```
 
-Before upload, smoke-test the signed app, inspect its entitlements with `codesign -dvvv --entitlements -`, and make sure the bundle ID, marketing version, and unique build number match App Store Connect. Drop the `.pkg` into Transporter and choose **Deliver**. Apple also supports command-line validation/upload with `xcrun altool`; see [Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
+Before upload, smoke-test the signed app, inspect its entitlements with `codesign -dvvv --entitlements -`, and make sure the bundle ID, marketing version, and unique build number match App Store Connect. Drop the `.pkg` into Transporter and choose **Deliver**. See Apple's [Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/) guidance for current delivery options.
 
 Do not commit certificates, private keys, provisioning profiles, passwords, or App Store Connect API keys.
 

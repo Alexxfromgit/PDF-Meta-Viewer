@@ -9,7 +9,7 @@ PDF Meta Viewer keeps document processing local. Open or drop a PDF, search its 
 - Automatic background analysis — the interface stays responsive while a PDF is parsed
 - Searchable, sortable metadata table with multi-row copy
 - Extracted text preview with a safe two-million-character display limit
-- Drag and drop, native file pickers, overwrite protection, and sensible export names
+- Drag and drop, macOS-native file dialogs, overwrite protection, and sensible export names
 - Light and dark appearance with the preference remembered between launches
 - Keyboard shortcuts and accessible component descriptions
 - Friendly validation and error messages with structured diagnostic logging
@@ -69,10 +69,10 @@ An export has a stable, explicit shape:
 
 ## Command-line use
 
-The packaged app opens the graphical interface. For scripting, run the CLI entry point through Maven or an explicit classpath:
+The packaged app opens the graphical interface. For scripting, build the project and run the CLI entry point with the shaded JAR on the classpath:
 
-```text
-program.Main <input.pdf> [output.json]
+```bash
+java -cp target/pdf-meta-viewer.jar program.Main <input.pdf> [output.json]
 ```
 
 With no output path it prints tab-separated metadata. With an output path it writes the same structured JSON produced by the app.
