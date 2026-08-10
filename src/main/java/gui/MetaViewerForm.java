@@ -149,6 +149,10 @@ public final class MetaViewerForm extends JFrame {
         System.setProperty("apple.awt.application.name", APP_MAIN_TITLE);
         System.setProperty("apple.laf.useScreenMenuBar", "true");
         System.setProperty("sun.java2d.uiScale.enabled", "true");
+        // FlatLaf extracts a native dylib for macOS window decoration extras at
+        // runtime; that file is unsigned/unnotarized and Gatekeeper blocks it on
+        // distributed builds. This app doesn't use those extras, so disable it.
+        System.setProperty("flatlaf.useNativeLibrary", "false");
 
         SwingUtilities.invokeLater(() -> {
             boolean useDarkTheme = PREFERENCES.getBoolean(PREF_DARK_MODE, false);
