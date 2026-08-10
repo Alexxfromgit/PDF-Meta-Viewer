@@ -233,6 +233,11 @@ jpackage "${jpackage_args[@]}" "${signing_args[@]}"
 patch_bundle_metadata "$app_bundle"
 cp "$APPLE_PROVISIONING_PROFILE" "$app_bundle/Contents/embedded.provisionprofile"
 
+# Files downloaded through a browser (like the provisioning profile) carry the
+# com.apple.quarantine extended attribute. App Store Connect rejects any
+# package containing quarantined files, so strip attributes before re-signing.
+xattr -cr "$app_bundle"
+
 # Adding the distribution profile and build number changes sealed resources, so
 # re-sign the outer bundle. jpackage has already signed the nested Java runtime
 # from the inside out with the same App Sandbox entitlements.
