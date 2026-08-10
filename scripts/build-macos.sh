@@ -237,7 +237,7 @@ cp "$APPLE_PROVISIONING_PROFILE" "$app_bundle/Contents/embedded.provisionprofile
 # re-sign the outer bundle. jpackage has already signed the nested Java runtime
 # from the inside out with the same App Sandbox entitlements.
 codesign --force --timestamp --sign "$application_identity" \
-    --entitlements "$outer_entitlements" "${codesign_keychain_args[@]}" "$app_bundle"
+    --entitlements "$outer_entitlements" "${codesign_keychain_args[@]+"${codesign_keychain_args[@]}"}" "$app_bundle"
 
 echo "Verifying the application signature and entitlements..."
 codesign --verify --deep --strict --verbose=2 "$app_bundle"
@@ -248,7 +248,7 @@ rm -f "$package_path"
 
 echo "Creating the signed Mac App Store installer package..."
 productbuild --component "$app_bundle" /Applications \
-    --sign "$installer_identity" "${productbuild_keychain_args[@]}" "$package_path"
+    --sign "$installer_identity" "${productbuild_keychain_args[@]+"${productbuild_keychain_args[@]}"}" "$package_path"
 
 pkgutil --check-signature "$package_path"
 
