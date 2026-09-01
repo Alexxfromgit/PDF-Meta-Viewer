@@ -17,7 +17,7 @@
         <project.build.outputTimestamp>2026-08-09T00:00:00Z</project.build.outputTimestamp>
 
         <tika.version>3.3.2</tika.version>
-        <jackson.version>2.22.1</jackson.version>
+        <jackson.version>2.22.2</jackson.version>
         <flatlaf.version>3.7.2</flatlaf.version>
         <slf4j.version>2.0.18</slf4j.version>
         <testng.version>7.12.0</testng.version>
