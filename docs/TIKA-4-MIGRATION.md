@@ -29,6 +29,42 @@ The application displays and exports the parser's metadata keys. Tika 4 changes 
 - [Migration guide](https://github.com/apache/tika/blob/4.1.0/docs/modules/ROOT/pages/migration-to-4x/migrating-to-4x.adoc)
 - [Metadata changes](https://github.com/apache/tika/blob/4.1.0/docs/modules/ROOT/pages/migration-to-4x/metadata-changes-4x.adoc)
 
-## Results
+## Standalone results
 
-Implementation and integration evaluation pending.
+Implementation commit: `faa5a7a97c84d3ddef7e3e6f5ef1b26c1d460956`, in [draft PR #22](https://github.com/Alexxfromgit/PDF-Meta-Viewer/pull/22).
+
+- The six version-independent migration contracts passed first against Tika 3.3.2, including embedded PDF text.
+- Java 17 `mvn clean verify` with Tika 4.1.0 passed 13 unit tests and 2 packaged-JVM integration tests. The latter launch the extractor with only its tiny probe class and the shaded JAR, check embedded text and CLI export, and check that both core and PDF parser index entries survive shading.
+- The standalone macOS app built successfully and its ad-hoc signature verified.
+- The [standalone Linux/Java 17 CI run](https://github.com/Alexxfromgit/PDF-Meta-Viewer/actions/runs/39747934793) passed, including packaged integration tests.
+- All three runtime Tika modules resolve to 4.1.0; Jackson stays at 2.22.3 and SLF4J at 2.0.20.
+
+## Evaluation of integration into #21
+
+The evaluation used #21 commit `a78c1856ac2f414213bdf4f6f3b798b641aacd24` and feature implementation commit `faa5a7a97c84d3ddef7e3e6f5ef1b26c1d460956`. A Git merge simulation produced a tree that was extracted into a temporary directory. No #21 branch or remote ref was modified.
+
+### Required reconciliation
+
+1. Combine the changelog additions: this was the only textual merge conflict.
+2. Remove the standalone feature's additional Failsafe plugin block. #21 already configures it with the shared `${surefire.version}`, packaged CLI version property, integration lifecycle and desktop profile. Keep that existing block. Without this reconciliation the simulated POM contains duplicate plugin declarations, despite Git merging it without a textual conflict.
+
+The extractor, README, Tika version bump, parser-index transformer, and three new test files merged without a source conflict. There was no application-code adaptation required beyond the completed feature.
+
+### Tests on the reconciled temporary tree
+
+- `./mvnw -Pdesktop-smoke clean verify`: **35 unit tests and 6 integration/desktop tests passed**, with no skips or failures; all existing coverage gates passed.
+- The GUI smoke test loaded the sample PDF, filtered/reset its metadata, displayed text and switched theme.
+- **11 Python release tests**, workflow lint and shell syntax checks passed.
+- The macOS app built; signature verification and the native CLI launcher/bundled-runtime extraction/export smoke test passed.
+- CycloneDX SBOM generation passed and lists the three Tika modules at 4.1.0.
+- The same sample PDF exported through the 3.3.2 and 4.1.0 JARs retains the `source`/`metadata` envelope. Metadata fields increase from 52 to 58. In addition to parser/permission key renames, the sample's custom `PTEX.Fullbanner` becomes `xmp-raw:pdfx:PTEX.Fullbanner`, and extra structural/XMP fields appear.
+
+### Effort, limits and decision point
+
+**Remaining integration effort: low, approximately 30–60 minutes plus one complete #21 CI cycle**, assuming no new platform-specific failures. The work is the two small reconciliations above, review of the resulting diff, and revalidation on the actual chosen branch. The temporary local integration is already proven on macOS/Java 17; the feature itself also passed Linux/Java 17 CI.
+
+The integrated Windows, Linux GUI, Intel macOS and Java 21/25 matrix, CodeQL and dependency review have **not** been rerun with Tika 4. Those checks must run before merging an integrated branch. A temporary local pass does not replace them.
+
+The main product decision is whether to accept Tika 4's canonical metadata keys. Existing consumers matching old key strings can be affected even though the JSON envelope is unchanged. A legacy-key compatibility layer would be additional scope with its own tests; it is not included in the estimate above.
+
+The feature can remain independently reviewable in #22, or be transferred into #21 after a decision. #18 remains open, and #21 remains unchanged and at Tika 3.3.2. Neither migration path was merged by this evaluation.
