@@ -20,6 +20,7 @@ Optional environment variables:
   MACOS_BUNDLE_ID                Explicit App ID; defaults to io.github.alexxfromgit.pdfmetaviewer.
   MACOS_MIN_VERSION              Minimum supported macOS version; defaults to 12.0.
   APP_VENDOR                     Displayed publisher/vendor name.
+  PACKAGE_SKIP_BUILD             Set to 1 to package an already verified target JAR (CI).
 
 Required for app-store mode:
   APPLE_SIGNING_KEY_USER_NAME    Team/user part of the signing identity used by jpackage.
@@ -135,8 +136,10 @@ require_command jpackage
 require_command codesign
 maven_command="$(find_maven)"
 
-echo "Building the application JAR and running tests..."
-(cd "$project_root" && "$maven_command" clean package)
+if [[ "${PACKAGE_SKIP_BUILD:-0}" != "1" ]]; then
+    echo "Building and verifying the application JAR..."
+    (cd "$project_root" && "$maven_command" --batch-mode --no-transfer-progress clean verify)
+fi
 
 if [[ ! -f "$jar_path" ]]; then
     echo "Expected application JAR was not created: $jar_path" >&2
@@ -160,6 +163,7 @@ jpackage_args=(
     --input "$input_dir"
     --main-jar pdf-meta-viewer.jar
     --main-class gui.MetaViewerForm
+    --add-launcher "pdf-meta-viewer-cli=$project_root/packaging/cli-launcher.properties"
     --dest "$output_dir"
     --app-version "$app_version"
     --vendor "$vendor"

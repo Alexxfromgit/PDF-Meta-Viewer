@@ -167,12 +167,14 @@ $IconPath = Join-Path $WorkDirectory "PDFMetaViewer.ico"
 $IconGenerator = Join-Path $ProjectRoot "packaging\IconGenerator.java"
 $IconToolClasses = Join-Path $WorkDirectory "icon-tool"
 
-Write-Host "Building the application JAR and running tests..."
-Push-Location $ProjectRoot
-try {
-    Invoke-CheckedCommand $MavenCommand @("clean", "package")
-} finally {
-    Pop-Location
+if ($env:PACKAGE_SKIP_BUILD -ne "1") {
+    Write-Host "Building and verifying the application JAR..."
+    Push-Location $ProjectRoot
+    try {
+        Invoke-CheckedCommand $MavenCommand @("--batch-mode", "--no-transfer-progress", "clean", "verify")
+    } finally {
+        Pop-Location
+    }
 }
 
 if (-not (Test-Path $JarPath)) {
@@ -194,6 +196,7 @@ $CommonJpackageArguments = @(
     "--input", $InputDirectory,
     "--main-jar", "pdf-meta-viewer.jar",
     "--main-class", "gui.MetaViewerForm",
+    "--add-launcher", "pdf-meta-viewer-cli=$(Join-Path $ProjectRoot 'packaging\cli-launcher.properties')",
     "--app-version", $JpackageVersion,
     "--vendor", $Vendor,
     "--description", $Description,
@@ -202,6 +205,15 @@ $CommonJpackageArguments = @(
     "--java-options", "-Dfile.encoding=UTF-8"
 )
 
+$AppImageDirectory = Join-Path $WorkDirectory "app-image"
+New-Item -ItemType Directory -Force $AppImageDirectory | Out-Null
+Write-Host "Creating the application image..."
+Invoke-CheckedCommand "jpackage" (@("--type", "app-image", "--dest", $AppImageDirectory) + $CommonJpackageArguments)
+$GeneratedAppImage = Join-Path $AppImageDirectory $AppName
+if (-not (Test-Path (Join-Path $GeneratedAppImage "$AppName.exe"))) {
+    throw "jpackage did not create the expected application image."
+}
+
 if ($Target -in @("exe", "all")) {
     $ExeStagingDirectory = Join-Path $WorkDirectory "exe"
     New-Item -ItemType Directory -Force $ExeStagingDirectory | Out-Null
@@ -209,13 +221,19 @@ if ($Target -in @("exe", "all")) {
     Write-Host "Creating the local Windows installer..."
     $ExeArguments = @(
         "--type", "exe",
+        "--app-image", $GeneratedAppImage,
+        "--name", $AppName,
+        "--app-version", $JpackageVersion,
+        "--vendor", $Vendor,
         "--dest", $ExeStagingDirectory,
         "--win-dir-chooser",
         "--win-menu",
         "--win-menu-group", $AppName,
         "--win-shortcut",
+        # Stable across versions so Windows can recognize installer upgrades.
+        "--win-upgrade-uuid", "2a194667-016b-52ff-a9c3-0643fd90a274",
         "--win-per-user-install"
-    ) + $CommonJpackageArguments
+    )
     Invoke-CheckedCommand "jpackage" $ExeArguments
 
     $GeneratedExe = Get-ChildItem $ExeStagingDirectory -Filter "*.exe" | Select-Object -First 1
@@ -230,21 +248,6 @@ if ($Target -in @("exe", "all")) {
 if ($Target -in @("msix", "all")) {
     if ([string]::IsNullOrWhiteSpace($PublisherDisplayName)) {
         $PublisherDisplayName = $Vendor
-    }
-
-    $AppImageDirectory = Join-Path $WorkDirectory "app-image"
-    New-Item -ItemType Directory -Force $AppImageDirectory | Out-Null
-
-    Write-Host "Creating the packaged Windows application image..."
-    $AppImageArguments = @(
-        "--type", "app-image",
-        "--dest", $AppImageDirectory
-    ) + $CommonJpackageArguments
-    Invoke-CheckedCommand "jpackage" $AppImageArguments
-
-    $GeneratedAppImage = Join-Path $AppImageDirectory $AppName
-    if (-not (Test-Path (Join-Path $GeneratedAppImage "$AppName.exe"))) {
-        throw "jpackage did not create the expected application image."
     }
 
     $LayoutDirectory = Join-Path $WorkDirectory "msix-layout"

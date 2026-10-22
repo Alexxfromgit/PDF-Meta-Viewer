@@ -1,36 +1,212 @@
-name: Build
+name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, main]
   pull_request:
+  merge_group:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      source-ref:
+        description: Exact commit to build for a release
+        required: false
+        type: string
+        default: ''
+      package-version:
+        description: Expected numeric release version
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    name: Verify (${{ matrix.platform }}, Java ${{ matrix.java }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, java: '17', platform: linux-x64, native: true}
+          - {os: windows-2022, java: '17', platform: windows-x64, native: true}
+          - {os: macos-15, java: '17', platform: macos-arm64, native: true}
+          - {os: macos-15-intel, java: '17', platform: macos-x64, native: true}
+          - {os: ubuntu-24.04, java: '21', platform: compatibility-21, native: false}
+          - {os: ubuntu-24.04, java: '25', platform: compatibility-25, native: false}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ matrix.java }}
           cache: maven
 
-      - name: Verify and package
-        run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Resolve package version
+        env:
+          EXPECTED_VERSION: ${{ inputs.package-version }}
+        run: |
+          version="$(python scripts/release.py package-version)"
+          if [[ -n "$EXPECTED_VERSION" && "$EXPECTED_VERSION" != "$version" ]]; then
+            echo 'Release version does not match the source POM.' >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
 
-      - name: Upload executable JAR
-        uses: actions/upload-artifact@v7
+      - name: Verify tests, packaged CLI and coverage
+        run: |
+          if [[ '${{ matrix.platform }}' == 'linux-x64' ]]; then
+            xvfb-run -a ./mvnw --batch-mode --no-transfer-progress -Pdesktop-smoke clean verify
+          else
+            ./mvnw --batch-mode --no-transfer-progress clean verify
+          fi
+
+      - name: Summarize coverage
+        if: always()
+        run: |
+          if [[ -f target/site/jacoco/jacoco.xml ]]; then
+            python scripts/release.py coverage target/site/jacoco/jacoco.xml >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: pdf-meta-viewer
-          path: target/pdf-meta-viewer.jar
+          name: reports-${{ matrix.platform }}-java-${{ matrix.java }}
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+            target/site/jacoco/
+          retention-days: 14
+
+      - name: Create portable JAR and dependency inventory
+        if: matrix.platform == 'linux-x64'
+        run: |
+          ./mvnw --batch-mode --no-transfer-progress org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -DoutputFormat=json
+          mkdir -p dist/release
+          cp target/pdf-meta-viewer.jar "dist/release/PDF-Meta-Viewer-$PACKAGE_VERSION.jar"
+          cp target/bom.json "dist/release/PDF-Meta-Viewer-$PACKAGE_VERSION-sbom.cdx.json"
+
+      - name: Build and smoke-test Linux application
+        if: matrix.platform == 'linux-x64'
+        env:
+          PACKAGE_SKIP_BUILD: '1'
+        run: |
+          ./scripts/build-linux.sh
+          python scripts/smoke-native.py 'dist/linux/PDF Meta Viewer/bin/pdf-meta-viewer-cli'
+          cp dist/linux/*.tar.gz dist/release/
+
+      - name: Build and smoke-test macOS application
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          PACKAGE_SKIP_BUILD: '1'
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ./scripts/build-macos.sh app
+          python scripts/smoke-native.py 'dist/macos/PDF Meta Viewer.app/Contents/MacOS/pdf-meta-viewer-cli'
+          mkdir -p dist/release
+          ditto -c -k --sequesterRsrc --keepParent 'dist/macos/PDF Meta Viewer.app' "dist/release/PDF-Meta-Viewer-$PACKAGE_VERSION-$PLATFORM.zip"
+
+      - name: Locate WiX 3 installer tools
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        run: |
+          $wix = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter 'WiX Toolset v3*' |
+            ForEach-Object { Join-Path $_.FullName 'bin' } |
+            Where-Object { Test-Path (Join-Path $_ 'candle.exe') } |
+            Select-Object -First 1
+          if (-not $wix) { throw 'WiX 3 is required; verify the windows-2022 runner image.' }
+          $wix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Validate Windows packaging script syntax
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/build-windows.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors) { throw ($parseErrors | Out-String) }
+
+      - name: Build and smoke-test Windows application
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        env:
+          PACKAGE_SKIP_BUILD: '1'
+        run: |
+          .\scripts\build-windows.ps1 -Target exe -Version $env:PACKAGE_VERSION
+          python scripts/smoke-native.py 'dist/.work/windows/app-image/PDF Meta Viewer/pdf-meta-viewer-cli.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'Native runtime smoke test failed.' }
+          New-Item -ItemType Directory -Force dist/release | Out-Null
+          Copy-Item dist/windows/*.exe dist/release/
+
+      - name: Upload desktop downloads
+        if: matrix.native
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: dist/release/*
           if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  tooling:
+    name: Workflow and release tooling
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - name: Test release validation and checksums
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: Lint shell syntax
+        run: bash -n mvnw scripts/build-macos.sh scripts/build-linux.sh
+      - name: Lint GitHub workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  passed:
+    name: CI passed
+    if: always()
+    needs: [verify, tooling, dependency-review]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all checks
+        env:
+          VERIFY: ${{ needs.verify.result }}
+          TOOLING: ${{ needs.tooling.result }}
+          DEPENDENCIES: ${{ needs.dependency-review.result }}
+        run: |
+          [[ "$VERIFY" == success && "$TOOLING" == success ]]
+          [[ "$DEPENDENCIES" == success || "$DEPENDENCIES" == skipped ]]

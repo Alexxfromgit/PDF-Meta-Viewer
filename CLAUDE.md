@@ -3,15 +3,15 @@
 ## Build and run
 
 ```bash
-mvn clean package
+./mvnw clean verify
 java -jar target/pdf-meta-viewer.jar
 
-mvn test
-mvn test -Dgroups=smoke
-mvn clean verify
+./mvnw test
+./mvnw test -Dgroups=smoke
+./mvnw clean verify
 ```
 
-The project requires Java 17+ and Maven 3.9+. The shaded executable JAR uses `gui.MetaViewerForm` as its main class.
+The project requires Java 17+; the wrapper pins Maven 3.9.16. The shaded executable JAR uses `gui.MetaViewerForm` as its main class.
 
 ## Architecture
 
@@ -34,3 +34,5 @@ Important details:
 ## Tests
 
 TestNG and AssertJ cover configuration, extraction, validation, JSON formatting, and file export. The sample PDF is under `src/test/resources`.
+
+Coverage audit and remaining gaps are in `docs/TESTING.md`. `./mvnw -Pdesktop-smoke clean verify` adds a GUI smoke test when a display is available. Release automation and versioning are documented in `RELEASING.md`; release tags must match a stable POM version and dated changelog section.

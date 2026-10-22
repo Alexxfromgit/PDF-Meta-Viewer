@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vMAJOR.MINOR.PATCH tag to build or retry
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require matching tag, POM, changelog and release branch
+        id: version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          version="$(python3 scripts/release.py check "$TAG")"
+          commit="$(git rev-parse HEAD)"
+          [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$commit" ]]
+          git merge-base --is-ancestor "$commit" "origin/$DEFAULT_BRANCH"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: Release verification
+    needs: validate
+    uses: ./.github/workflows/build.yml
+    with:
+      source-ref: ${{ needs.validate.outputs.commit }}
+      package-version: ${{ needs.validate.outputs.version }}
+
+  draft:
+    name: Assemble draft GitHub Release
+    needs: [validate, ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.validate.outputs.tag }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Confirm tag still points to verified source
+        run: test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$SOURCE_COMMIT"
+      - name: Download verified packages from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Validate complete asset set and calculate SHA-256
+        run: python3 scripts/release.py checksums "$VERSION" release-assets
+      - name: Attest release downloads
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/*
+      - name: Generate curated notes and GitHub contributor history
+        run: |
+          python3 scripts/release.py notes "$VERSION" > release-notes.md
+          gh api "repos/$GH_REPO/releases/generate-notes" -f tag_name="$TAG" --jq '.body' >> release-notes.md
+      - name: Create or refresh draft without changing published releases
+        run: |
+          if gh release view "$TAG" --json isDraft > existing-release.json 2>/dev/null; then
+            python3 -c 'import json; assert json.load(open("existing-release.json"))["isDraft"], "Refusing to modify a published release"'
+            gh release edit "$TAG" --title "PDF Meta Viewer $VERSION" --notes-file release-notes.md --draft
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* --verify-tag --draft \
+              --title "PDF Meta Viewer $VERSION" --notes-file release-notes.md
+          fi
+          echo "Draft release ready for review: https://github.com/$GH_REPO/releases/tag/$TAG" >> "$GITHUB_STEP_SUMMARY"
