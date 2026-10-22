@@ -1,5 +1,7 @@
 # PDF Meta Viewer
 
+[![CI](https://github.com/Alexxfromgit/PDF-Meta-Viewer/actions/workflows/build.yml/badge.svg)](https://github.com/Alexxfromgit/PDF-Meta-Viewer/actions/workflows/build.yml) [![CodeQL](https://github.com/Alexxfromgit/PDF-Meta-Viewer/actions/workflows/codeql.yml/badge.svg)](https://github.com/Alexxfromgit/PDF-Meta-Viewer/actions/workflows/codeql.yml)
+
 A focused, cross-platform desktop utility for inspecting PDF metadata and exporting it as clean JSON.
 
 PDF Meta Viewer keeps document processing local. Open or drop a PDF, search its metadata, preview extracted text, and export a structured metadata file without uploading the document anywhere.
@@ -15,19 +17,25 @@ PDF Meta Viewer keeps document processing local. Open or drop a PDF, search its 
 - Friendly validation and error messages with structured diagnostic logging
 - Atomic, pretty-printed JSON exports
 
-## Requirements
+## Downloads
 
-- Java 17 or newer
-- Maven 3.9 or newer (for building from source)
+Download published builds from [GitHub Releases](https://github.com/Alexxfromgit/PDF-Meta-Viewer/releases). Releases provide a Windows x64 installer, separate Apple Silicon and Intel Mac ZIPs, a Linux x64 archive, and a portable JAR. Native packages include Java; the JAR requires Java 17+. Choose the file matching your OS and processor, and read the release's installation and signing notes.
+
+Each release includes SHA-256 checksums, a CycloneDX dependency inventory (SBOM), and GitHub build provenance. CI prepares releases as drafts for the maintainer to review before publishing. Until signing credentials are configured, Windows installers are unsigned and Mac apps are ad-hoc signed without notarization.
+
+## Requirements for building
+
+- A full JDK 17 or newer
+- The included Maven Wrapper downloads the pinned Maven version automatically
 
 ## Run from source
 
 ```bash
-mvn clean package
+./mvnw clean verify
 java -jar target/pdf-meta-viewer.jar
 ```
 
-The first command runs the full test suite and creates a self-contained executable JAR.
+The first command runs unit and packaged CLI integration tests, checks coverage, and creates an executable JAR containing the app dependencies. On Windows, use `mvnw.cmd` instead of `./mvnw`.
 Pass a PDF path after the JAR name to open it immediately.
 
 ## Native packages
@@ -37,6 +45,9 @@ The release scripts build self-contained applications with a bundled Java runtim
 ```bash
 # Run on macOS
 ./scripts/build-macos.sh app
+
+# Run on Linux (also requires Python 3.11+)
+./scripts/build-linux.sh
 ```
 
 ```powershell
@@ -67,6 +78,8 @@ An export has a stable, explicit shape:
 }
 ```
 
+Metadata uses Apache Tika 4's native key names. Parser-specific keys can differ from older exports (for example, `pdf:PDFVersion` becomes `pdf:pdf-version`); the JSON structure stays the same. See [Tika migration notes](docs/TIKA-4-MIGRATION.md).
+
 ## Command-line use
 
 The packaged app opens the graphical interface. For scripting, build the project and run the CLI entry point with the shaded JAR on the classpath:
@@ -80,10 +93,15 @@ With no output path it prints tab-separated metadata. With an output path it wri
 ## Development
 
 ```bash
-mvn test
-mvn test -Dgroups=smoke
-mvn clean verify
+./mvnw test
+./mvnw test -Dgroups=smoke
+./mvnw clean verify
+python3 -m unittest discover -s scripts/tests -v
 ```
+
+CI verifies Java 17 on Linux, Windows, and both Mac architectures, plus Java 21 and 25 on Linux. It builds and smoke-tests native packages, uploads test/coverage reports, and reviews dependency changes. CodeQL analyzes Java on PRs, branch pushes and a weekly schedule. Run `./mvnw -Pdesktop-smoke clean verify` with a display to include the full-window Swing smoke test (Linux CI uses Xvfb).
+
+See [docs/TESTING.md](docs/TESTING.md) for the initial coverage audit, enforced thresholds, results, and remaining gaps. Open `target/site/jacoco/index.html` after verification for local coverage.
 
 ### Architecture
 

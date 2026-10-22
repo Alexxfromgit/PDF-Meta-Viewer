@@ -5,3 +5,8 @@
 # IntelliJ IDEA project files
 /.idea/
 *.iml
+
+# Local OS and Python tooling files
+.DS_Store
+__pycache__/
+*.pyc

@@ -6,6 +6,14 @@ All notable changes to this project will be documented here.
 
 ### Added
 
+- Cross-platform GitHub CI with Java 17/21/25 checks, native package smoke tests, dependency review and CodeQL
+- JaCoCo coverage reports and per-package regression gates, generated PDF fixtures and packaged CLI integration tests
+- Full-window Swing smoke test with isolated preferences, plus release-tool regression tests
+- Versioned draft GitHub Releases for Windows, Apple Silicon/Intel macOS and Linux, plus a portable JAR
+- SHA-256 download checksums, CycloneDX dependency inventory, GitHub provenance attestations and categorized release notes
+- Checksum-verified Maven Wrapper, release preparation/validation tooling and a coverage audit
+- Bundled native command-line launcher and Linux application packaging
+
 - New responsive desktop interface with searchable metadata and a text preview
 - Drag-and-drop PDF opening, keyboard shortcuts, and remembered preferences
 - Light and dark themes powered by FlatLaf
@@ -17,6 +25,12 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
+- Updated SLF4J to 2.0.20, aligned Surefire and Failsafe on 3.6.0, and pinned setup-java v6 in CI and CodeQL
+- Updated Jackson to 2.22.3 to address the repository's existing dependency security alerts
+- CLI invalid paths now produce a controlled error and exit status instead of an uncaught exception
+- Native packaging runs full verification before building and reuses verified app images on Windows
+
+- Migrated to Apache Tika 4.1.0, preserving embedded PDF text and adopting its canonical metadata key names; see `docs/TIKA-4-MIGRATION.md`
 - Raised the runtime baseline from Java 8 to Java 17
 - Updated Apache Tika, Jackson, logging, and test dependencies
 - Replaced the IntelliJ form-designer runtime with a maintainable programmatic Swing UI

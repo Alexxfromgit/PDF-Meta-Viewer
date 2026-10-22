@@ -7,6 +7,7 @@ Generated files are written under `dist/` and are intentionally ignored by Git.
 | Target | Command | Output |
 | --- | --- | --- |
 | Local macOS | `./scripts/build-macos.sh app` | `.app` |
+| Local Linux | `./scripts/build-linux.sh` | runtime-bundled `.tar.gz` |
 | Mac App Store | `./scripts/build-macos.sh app-store` | signed `.app` and `.pkg` |
 | Local Windows | `.\scripts\build-windows.ps1 -Target exe` | `.exe` installer |
 | Microsoft Store | `.\scripts\build-windows.ps1 -Target msix` | unsigned `.msix` and `.msixupload` |
@@ -14,11 +15,73 @@ Generated files are written under `dist/` and are intentionally ignored by Git.
 ## Common prerequisites
 
 - A full JDK 17 or newer, with `java`, `javac`, and `jpackage`
-- Maven 3.9 or newer
+- Python 3.11+ for release tooling, Linux packaging, and native runtime smoke tests
+- The included Maven Wrapper (downloads checksum-verified Maven 3.9.16)
 - A numeric release version such as `1.0.0`
 - The project's license, final publisher name, privacy declarations, screenshots, support URL, and Store descriptions completed before submission
 
-The scripts run `mvn clean package`, including all tests, before packaging. Oracle's documentation notes that native packages must be created on each target platform and that the generated runtime is bundled with the app: [JDK 17 Packaging Tool User's Guide](https://docs.oracle.com/en/java/javase/17/jpackage/packaging-tool-user-guide.pdf).
+The scripts use the Maven Wrapper and run `clean verify`, including unit tests, packaged CLI integration tests and coverage gates, before packaging. `PACKAGE_SKIP_BUILD=1` is reserved for CI after that same checkout has already passed verification. Oracle's documentation notes that native packages must be created on each target platform and that the generated runtime is bundled with the app: [JDK 17 Packaging Tool User's Guide](https://docs.oracle.com/en/java/javase/17/jpackage/packaging-tool-user-guide.pdf).
+
+## GitHub CI/CD
+
+### Checks before merging
+
+`.github/workflows/build.yml` runs on pull requests (including forks), pushes to `master`/`main`, merge queues, manual dispatch, and release calls. Six jobs verify Java 17 on Ubuntu 24.04, Windows 2022, macOS 15 Apple Silicon and macOS 15 Intel, plus Java 21 and 25 on Ubuntu. The Java 17 jobs build native downloads and run a real PDF export through the native CLI launcher and bundled runtime. Ubuntu also runs a Swing window smoke test under Xvfb. Test reports and coverage artifacts are retained for 14 days; job summaries show coverage for the entire application.
+
+The workflow also lints GitHub Actions and shell syntax, tests release tooling, and rejects new high/critical dependency vulnerabilities on PRs. CodeQL runs separately on PRs, default-branch pushes, weekly, and on demand. Dependabot already maintains Maven dependencies and action pins. Third-party action references are pinned to immutable commits, and normal CI has read-only repository access.
+
+Recommended GitHub repository settings:
+
+- Enable Actions, the dependency graph and Dependabot alerts. Use the **advanced** CodeQL workflow here rather than enabling a duplicate default setup.
+- Protect the default branch with required `CI passed` and `Analyze Java` checks; both workflows support merge queues.
+- Add a tag ruleset for `v*`: limit creation to maintainers and prevent tag updates/deletion. Releases bind all build jobs to the validated commit SHA.
+- Choose and add the project's license before the first public binary release. This change does not select a license for the owner.
+
+### Prepare a version
+
+The POM is the single version source. Native installers accept numeric versions; the pipeline supports stable `MAJOR.MINOR.PATCH` releases, not prerelease suffixes. Major must be at least 1; Windows installer compatibility limits major/minor to 255 and patch to 65535. Development versions may use `-SNAPSHOT`.
+
+Keep user-facing notes under `## Unreleased` in `CHANGELOG.md`. When ready, prepare a release on a branch:
+
+```bash
+python3 scripts/release.py prepare 1.0.0
+./mvnw clean verify
+python3 scripts/release.py check v1.0.0
+```
+
+`prepare` finalizes the POM version, updates the reproducible JAR timestamp, and moves the Unreleased notes into a dated release section. Review and merge those changes through a PR. No version or tag is created automatically on normal branch pushes.
+
+### Build a release
+
+From the merged default-branch commit:
+
+```bash
+git tag -a v1.0.0 -m "Release 1.0.0"
+git push origin v1.0.0
+```
+
+The `Release` workflow rejects mismatched POM/tag versions, snapshots, missing release notes, and commits outside the default branch's history. It reuses the full CI workflow at the exact validated commit, then collects this run's packages. It requires exactly these six nonempty assets before creating checksums:
+
+| Download | Requirement |
+| --- | --- |
+| `PDF-Meta-Viewer-VERSION-windows-x64.exe` | Windows x64; Java included |
+| `PDF-Meta-Viewer-VERSION-macos-arm64.zip` | Apple Silicon Mac; Java included |
+| `PDF-Meta-Viewer-VERSION-macos-x64.zip` | Intel Mac; Java included |
+| `PDF-Meta-Viewer-VERSION-linux-x64.tar.gz` | Linux x64 desktop; tested on Ubuntu 24.04; Java included |
+| `PDF-Meta-Viewer-VERSION.jar` | Java 17+ installed separately |
+| `PDF-Meta-Viewer-VERSION-sbom.cdx.json` | CycloneDX inventory of bundled dependencies |
+
+The final job adds `SHA256SUMS.txt`, creates GitHub provenance attestations, and assembles a **draft** GitHub Release with changelog notes, installation guidance, signing status, categorized merged PRs and contributor history. The repository's built-in `GITHUB_TOKEN` is sufficient; no personal token or signing secrets are required for these unsigned/ad-hoc builds. Write and OIDC permissions are limited to the final release job. The release workflow does not upload to Apple or Microsoft Stores or publish to Maven Central/GitHub Packages.
+
+Review the draft's assets, notes and dependency inventory, and smoke-test downloads on clean machines. Use GitHub's **Publish release** action once reviewed. GitHub handles source ZIP/tar downloads automatically. Attestations establish build provenance; they do not replace a code-signing certificate.
+
+To retry, rerun the failed workflow or manually run `Release` with the existing tag. A retry can refresh an existing draft and its assets; it refuses to change a published release. Release jobs are serialized per tag. After publication, start the next development version in the POM, such as `1.0.1-SNAPSHOT`, and keep new changes under Unreleased.
+
+### Signing before broad distribution
+
+Current GitHub artifacts use the existing ad-hoc Mac signing and unsigned Windows packaging. Mac apps are **not notarized** and downloads can be blocked by Gatekeeper; Windows can show SmartScreen warnings. The generated release notes explicitly disclose this. For verified-publisher distribution, a follow-up must configure Developer ID Application signing plus notarization/stapling on macOS and Authenticode signing on Windows, then sign **before** checksums and attestations. Those credentials are not present in the repository and are separate from Store signing.
+
+Do not remove download quarantine attributes or recommend disabling OS protection as a distribution strategy. Existing Mac App Store and MSIX workflows below remain separate, manual submission paths.
 
 ## macOS local application
 
@@ -118,11 +181,11 @@ An unsigned MSIX is not the normal local-install format. Use the generated EXE f
 
 1. Add the final project license and confirm Maven coordinates, bundle ID, Microsoft identity, publisher names, and support/privacy URLs.
 2. Replace the Maven `-SNAPSHOT` version and move `Unreleased` notes in `CHANGELOG.md` into a dated release section.
-3. Run `mvn clean verify` with Java 17.
+3. Run `./mvnw clean verify` with Java 17 and review the CI results.
 4. Build each artifact on its target operating system and processor architecture.
 5. Smoke-test open, drag-and-drop, search, copy, appearance switching, export, installation, uninstall, and upgrade from the prior version.
 6. Validate the Mac signatures/package, run the Windows App Certification Kit, and review dependency security alerts.
 7. Submit first to TestFlight/limited availability where possible, then complete Store certification and review.
-8. Commit the release, create an annotated `vX.Y.Z` tag, and archive checksums for the exact submitted artifacts.
+8. For GitHub distribution, tag the merged release commit as described above and review/publish the generated draft. Store submissions are separate; retain checksums for those exact signed artifacts.
 
 The old placeholder JAR-signing configuration was intentionally removed. Platform signing must use local secure Keychains/certificate stores or protected CI secrets, never hard-coded paths and passwords.
