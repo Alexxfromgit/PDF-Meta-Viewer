@@ -19,10 +19,11 @@
         <tika.version>3.3.2</tika.version>
         <jackson.version>2.22.3</jackson.version>
         <flatlaf.version>3.7.2</flatlaf.version>
-        <slf4j.version>2.0.18</slf4j.version>
+        <slf4j.version>2.0.20</slf4j.version>
         <testng.version>7.12.0</testng.version>
         <assertj.version>3.27.7</assertj.version>
         <jacoco.version>0.8.15</jacoco.version>
+        <surefire.version>3.6.0</surefire.version>
     </properties>
 
     <dependencies>
@@ -90,7 +91,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.3</version>
+                <version>${surefire.version}</version>
                 <configuration>
                     <failIfNoTests>true</failIfNoTests>
                     <systemPropertyVariables>
@@ -102,8 +103,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.3</version>
+                <version>${surefire.version}</version>
                 <configuration>
+                    <failIfNoTests>true</failIfNoTests>
                     <systemPropertyVariables>
                         <pdfMetaViewer.version>${project.version}</pdfMetaViewer.version>
                     </systemPropertyVariables>

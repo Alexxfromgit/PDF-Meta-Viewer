@@ -25,6 +25,7 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
+- Updated SLF4J to 2.0.20, aligned Surefire and Failsafe on 3.6.0, and pinned setup-java v6 in CI and CodeQL
 - Updated Jackson to 2.22.3 to address the repository's existing dependency security alerts
 - CLI invalid paths now produce a controlled error and exit status instead of an uncaught exception
 - Native packaging runs full verification before building and reuses verified app images on Windows

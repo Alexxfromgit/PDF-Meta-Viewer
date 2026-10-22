@@ -23,6 +23,8 @@ Tests now exercise generated blank, encrypted, malformed and large PDFs, immutab
 
 `./mvnw test` runs unit tests only. `./mvnw test -Dgroups=smoke` runs the small existing smoke subset; release validation always uses the full `verify` lifecycle.
 
+Surefire and Failsafe share version 3.6.0 and run TestNG through the JUnit Platform engine. Both fail if no tests are discovered. `-DskipTests` skips only unit tests; use `-DskipITs` to skip integration tests explicitly. CI and native packaging run the full suite without either flag.
+
 ## Results after this change
 
 Local Java 17 verification passed **28 unit tests and 4 integration/UI tests**, plus **11 Python release-tool tests**. Default verification runs 3 integration tests; `-Pdesktop-smoke` adds the window test. With that profile on macOS, JaCoCo measured:
