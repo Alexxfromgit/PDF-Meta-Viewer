@@ -42,9 +42,11 @@ jobs:
           commit="$(git rev-parse HEAD)"
           [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$commit" ]]
           git merge-base --is-ancestor "$commit" "origin/$DEFAULT_BRANCH"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "tag=$TAG"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
 
   ci:
     name: Release verification
