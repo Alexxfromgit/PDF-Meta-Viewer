@@ -67,6 +67,8 @@ An export has a stable, explicit shape:
 }
 ```
 
+Metadata uses Apache Tika 4's native key names. Parser-specific keys can differ from older exports (for example, `pdf:PDFVersion` becomes `pdf:pdf-version`); the JSON structure stays the same. See [Tika migration notes](docs/TIKA-4-MIGRATION.md).
+
 ## Command-line use
 
 The packaged app opens the graphical interface. For scripting, build the project and run the CLI entry point with the shaded JAR on the classpath:

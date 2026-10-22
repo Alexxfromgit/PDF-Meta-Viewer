@@ -17,6 +17,7 @@ All notable changes to this project will be documented here.
 
 ### Changed
 
+- Migrated to Apache Tika 4.1.0, preserving embedded PDF text and adopting its canonical metadata key names; see `docs/TIKA-4-MIGRATION.md`
 - Raised the runtime baseline from Java 8 to Java 17
 - Updated Apache Tika, Jackson, logging, and test dependencies
 - Replaced the IntelliJ form-designer runtime with a maintainable programmatic Swing UI
