@@ -1,9 +1,14 @@
 package extractor;
 
+import org.apache.tika.detect.DefaultDetector;
+import org.apache.tika.detect.Detector;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.exception.WriteLimitReachedException;
+import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
 import org.apache.tika.parser.pdf.PDFParser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
@@ -13,7 +18,6 @@ import repository.DocumentRecord;
 import repository.DocumentRepository;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -31,8 +35,13 @@ public final class PDFExtractor {
         BodyContentHandler contentHandler = new BodyContentHandler(TEXT_PREVIEW_LIMIT);
         boolean contentTruncated = false;
 
-        try (InputStream input = Files.newInputStream(source)) {
-            new PDFParser().parse(input, contentHandler, tikaMetadata, new ParseContext());
+        try (TikaInputStream input = TikaInputStream.get(source)) {
+            ParseContext context = new ParseContext();
+            Detector detector = new DefaultDetector();
+            // Tika 4 no longer supplies these for concrete parsers. Preserve embedded PDF text.
+            context.set(Detector.class, detector);
+            context.set(Parser.class, new AutoDetectParser(detector));
+            new PDFParser().parse(input, contentHandler, tikaMetadata, context);
         } catch (SAXException exception) {
             if (WriteLimitReachedException.isWriteLimitReached(exception)) {
                 contentTruncated = true;
