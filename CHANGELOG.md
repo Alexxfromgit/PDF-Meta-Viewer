@@ -30,6 +30,7 @@ All notable changes to this project will be documented here.
 - CLI invalid paths now produce a controlled error and exit status instead of an uncaught exception
 - Native packaging runs full verification before building and reuses verified app images on Windows
 
+- Migrated to Apache Tika 4.1.0, preserving embedded PDF text and adopting its canonical metadata key names; see `docs/TIKA-4-MIGRATION.md`
 - Raised the runtime baseline from Java 8 to Java 17
 - Updated Apache Tika, Jackson, logging, and test dependencies
 - Replaced the IntelliJ form-designer runtime with a maintainable programmatic Swing UI
